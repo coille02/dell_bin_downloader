@@ -4,7 +4,7 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.keys import Keys
-import time, os, requests, re
+import time, os, requests, re, platform, sys
 from urllib.parse import urljoin, urlparse
 
 def setup_driver():
@@ -14,8 +14,40 @@ def setup_driver():
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
-    options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-    return webdriver.Chrome(options=options)
+    options.add_argument("--disable-extensions")
+    options.add_argument("--disable-plugins")
+    options.add_argument("--disable-images")
+    options.add_argument("--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+    
+    # Platform-specific configurations
+    current_platform = platform.system().lower()
+    print(f"Detected platform: {current_platform}")
+    
+    if current_platform == "linux":
+        options.add_argument("--disable-setuid-sandbox")
+        options.add_argument("--disable-background-timer-throttling")
+        options.add_argument("--disable-backgrounding-occluded-windows")
+        options.add_argument("--disable-renderer-backgrounding")
+        options.add_argument("--remote-debugging-port=9222")
+    elif current_platform == "darwin":  # macOS
+        options.add_argument("--disable-web-security")
+        options.add_argument("--allow-running-insecure-content")
+    
+    try:
+        driver = webdriver.Chrome(options=options)
+        print("Chrome driver initialized successfully")
+        return driver
+    except Exception as e:
+        print(f"Error initializing Chrome driver: {e}")
+        print("Please ensure Chrome and chromedriver are installed:")
+        if current_platform == "linux":
+            print("  Ubuntu/Debian: sudo apt install chromium-browser chromium-chromedriver")
+            print("  CentOS/RHEL: sudo yum install chromium chromedriver")
+        elif current_platform == "darwin":
+            print("  macOS: brew install --cask google-chrome && brew install chromedriver")
+        else:
+            print("  Windows: Install Chrome and download chromedriver")
+        sys.exit(1)
 
 def find_search_input(driver):
     """Try multiple selectors to find the search input"""
@@ -256,7 +288,11 @@ def find_bin_files(driver):
     return bin_links
 
 def main():
-    driver = setup_driver()
+    try:
+        driver = setup_driver()
+    except Exception as e:
+        print(f"Failed to initialize Chrome driver: {e}")
+        return
     
     try:
         print("Opening Dell Support page...")
