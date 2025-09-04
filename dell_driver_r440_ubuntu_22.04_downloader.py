@@ -335,8 +335,10 @@ def main():
             # Use all download links if no .bin files found
             bin_links = download_links
         
-        # Create downloads directory
-        os.makedirs("downloads", exist_ok=True)
+        # Create OS-specific directory
+        os_name = "Ubuntu_Server_22.04_LTS"
+        os_dir = os.path.join("downloads", os_name)
+        os.makedirs(os_dir, exist_ok=True)
         
         # Download files
         successful_downloads = 0
@@ -350,7 +352,7 @@ def main():
             if not filename or '.' not in filename:
                 filename = f"download_{i}.bin"
             
-            filepath = os.path.join("downloads", filename)
+            filepath = os.path.join(os_dir, filename)
             print(f"\nDownloading {i+1}/{len(bin_links)}: {filename}")
             
             if download_file(url, filepath):
