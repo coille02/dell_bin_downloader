@@ -267,14 +267,28 @@ def find_bin_files(driver):
     # Method 5: Check for data attributes on table rows or containers
     if len(bin_links) == 0:
         print("Method 5 - Checking data attributes on table elements...")
-        table_elements = driver.find_elements(By.XPATH, "//tr[@data-*] | //td[@data-*] | //div[@data-download*]")
-        
-        for element in table_elements:
-            for attr_name in element.get_property('attributes').keys() if element.get_property('attributes') else []:
-                if 'data-' in attr_name:
-                    attr_value = element.get_attribute(attr_name)
-                    if attr_value and ('.bin' in attr_value.lower() or '.BIN' in attr_value):
-                        bin_links.append(attr_value)
+        try:
+            # Find elements that commonly have data attributes
+            table_elements = []
+            table_elements.extend(driver.find_elements(By.TAG_NAME, "tr"))
+            table_elements.extend(driver.find_elements(By.TAG_NAME, "td"))
+            table_elements.extend(driver.find_elements(By.TAG_NAME, "div"))
+            
+            for element in table_elements:
+                try:
+                    # Get all attributes of the element using JavaScript
+                    attrs = driver.execute_script(
+                        "var items = {}; for (index = 0; index < arguments[0].attributes.length; ++index) { items[arguments[0].attributes[index].name] = arguments[0].attributes[index].value }; return items;", 
+                        element
+                    )
+                    
+                    for attr_name, attr_value in attrs.items():
+                        if attr_name.startswith('data-') and attr_value and ('.bin' in attr_value.lower() or '.BIN' in attr_value):
+                            bin_links.append(attr_value)
+                except Exception:
+                    continue
+        except Exception as e:
+            print(f"Method 5 failed: {e}")
     
     # Remove duplicates
     bin_links = list(set(bin_links))
