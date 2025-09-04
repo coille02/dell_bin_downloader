@@ -4,7 +4,7 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.keys import Keys
-import time, os, requests, re
+import time, os, requests, re, platform, sys
 from urllib.parse import urljoin, urlparse
 
 def setup_driver():
@@ -14,8 +14,40 @@ def setup_driver():
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
-    options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-    return webdriver.Chrome(options=options)
+    options.add_argument("--disable-extensions")
+    options.add_argument("--disable-plugins")
+    options.add_argument("--disable-images")
+    options.add_argument("--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+    
+    # Platform-specific configurations
+    current_platform = platform.system().lower()
+    print(f"Detected platform: {current_platform}")
+    
+    if current_platform == "linux":
+        options.add_argument("--disable-setuid-sandbox")
+        options.add_argument("--disable-background-timer-throttling")
+        options.add_argument("--disable-backgrounding-occluded-windows")
+        options.add_argument("--disable-renderer-backgrounding")
+        options.add_argument("--remote-debugging-port=9222")
+    elif current_platform == "darwin":  # macOS
+        options.add_argument("--disable-web-security")
+        options.add_argument("--allow-running-insecure-content")
+    
+    try:
+        driver = webdriver.Chrome(options=options)
+        print("Chrome driver initialized successfully")
+        return driver
+    except Exception as e:
+        print(f"Error initializing Chrome driver: {e}")
+        print("Please ensure Chrome and chromedriver are installed:")
+        if current_platform == "linux":
+            print("  Ubuntu/Debian: sudo apt install chromium-browser chromium-chromedriver")
+            print("  CentOS/RHEL: sudo yum install chromium chromedriver")
+        elif current_platform == "darwin":
+            print("  macOS: brew install --cask google-chrome && brew install chromedriver")
+        else:
+            print("  Windows: Install Chrome and download chromedriver")
+        sys.exit(1)
 
 def find_search_input(driver):
     """Try multiple selectors to find the search input"""
@@ -43,60 +75,212 @@ def find_search_input(driver):
     return None
 
 def select_os_by_data_value(driver, os_data_value, os_name):
-    """Select specific OS by data-value"""
+    """Select specific OS by data-value with enhanced clicking"""
     print(f"Attempting to select {os_name} (data-value: {os_data_value})...")
     
     try:
         # Wait for page to load
-        time.sleep(3)
+        time.sleep(5)
         
-        # Try to open dropdown first
-        try:
-            dropdown_buttons = driver.find_elements(By.CSS_SELECTOR, "button[aria-haspopup='listbox']")
-            for btn in dropdown_buttons:
-                if btn.is_displayed():
-                    btn.click()
-                    time.sleep(2)
+        # Method 1: Try to find and open OS dropdown
+        dropdown_selectors = [
+            "button[aria-haspopup='listbox']",
+            "select[name*='os']",
+            "select[id*='os']",
+            ".dropdown-toggle",
+            "[role='combobox']",
+            "button[aria-expanded='false']",
+            "button[data-toggle='dropdown']"
+        ]
+        
+        dropdown_opened = False
+        for selector in dropdown_selectors:
+            try:
+                dropdowns = driver.find_elements(By.CSS_SELECTOR, selector)
+                print(f"Found {len(dropdowns)} elements with selector: {selector}")
+                
+                for dropdown in dropdowns:
+                    if dropdown.is_displayed() and dropdown.is_enabled():
+                        print(f"Clicking dropdown with selector: {selector}")
+                        
+                        # Scroll into view
+                        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", dropdown)
+                        time.sleep(1)
+                        
+                        # Try to click
+                        try:
+                            dropdown.click()
+                        except:
+                            driver.execute_script("arguments[0].click();", dropdown)
+                        
+                        time.sleep(3)
+                        dropdown_opened = True
+                        break
+                        
+                if dropdown_opened:
                     break
-        except:
-            pass
+                    
+            except Exception as e:
+                print(f"Error with selector {selector}: {e}")
+                continue
         
-        # Find and click the specific OS option
-        try:
-            os_element = driver.find_element(By.CSS_SELECTOR, f"button[data-value='{os_data_value}']")
-            if os_element.is_displayed() or os_element.is_enabled():
-                driver.execute_script("arguments[0].scrollIntoView(true);", os_element)
-                time.sleep(1)
+        if not dropdown_opened:
+            print("Could not open any dropdown, trying direct OS element access...")
+        else:
+            print("Dropdown opened successfully")
+        
+        # Method 2: Try multiple approaches to find and click OS option
+        os_selectors = [
+            (f"button[data-value='{os_data_value}']", f"{os_name} - data-value"),
+            (f"*[data-value='{os_data_value}']", f"{os_name} - any element"),
+            (f"option[value='{os_data_value}']", f"{os_name} - option"),
+            (f"li[data-value='{os_data_value}']", f"{os_name} - list item"),
+        ]
+        
+        # Try CSS selectors first
+        for selector, description in os_selectors:
+            try:
+                os_elements = driver.find_elements(By.CSS_SELECTOR, selector)
+                print(f"Found {len(os_elements)} elements for {description}")
                 
-                try:
-                    os_element.click()
-                except:
-                    driver.execute_script("arguments[0].click();", os_element)
-                
-                print(f"Successfully selected {os_name}")
-                time.sleep(7)  # Wait for page reload
-                return True
-        except Exception as e:
-            print(f"Failed to select {os_name}: {e}")
-            return False
+                for os_element in os_elements:
+                    try:
+                        # Debug element visibility and state
+                        is_displayed = os_element.is_displayed()
+                        is_enabled = os_element.is_enabled()
+                        text = os_element.text
+                        print(f"Element state - Displayed: {is_displayed}, Enabled: {is_enabled}, Text: '{text[:30]}'")
+                        
+                        # Try clicking even if not perfectly visible/enabled
+                        if is_displayed or is_enabled or text:  # More lenient check
+                            print(f"Attempting to click: {description}")
+                            
+                            # Scroll to element
+                            driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", os_element)
+                            time.sleep(2)
+                            
+                            # Multiple click attempts
+                            click_success = False
+                            
+                            # Method 1: Regular click
+                            try:
+                                os_element.click()
+                                click_success = True
+                                print("Regular click successful")
+                            except Exception as e:
+                                print(f"Regular click failed: {e}")
+                            
+                            # Method 2: JavaScript click
+                            if not click_success:
+                                try:
+                                    driver.execute_script("arguments[0].click();", os_element)
+                                    click_success = True
+                                    print("JavaScript click successful")
+                                except Exception as e:
+                                    print(f"JavaScript click failed: {e}")
+                            
+                            # Method 3: Action chains
+                            if not click_success:
+                                try:
+                                    from selenium.webdriver.common.action_chains import ActionChains
+                                    ActionChains(driver).move_to_element(os_element).click().perform()
+                                    click_success = True
+                                    print("ActionChains click successful")
+                                except Exception as e:
+                                    print(f"ActionChains click failed: {e}")
+                            
+                            # Method 4: Force click with coordinates
+                            if not click_success:
+                                try:
+                                    driver.execute_script("arguments[0].click(); arguments[0].dispatchEvent(new Event('change'));", os_element)
+                                    click_success = True
+                                    print("Force click with event successful")
+                                except Exception as e:
+                                    print(f"Force click failed: {e}")
+                            
+                            if click_success:
+                                print("Click executed, waiting for page update...")
+                                time.sleep(8)  # Wait longer for page to update
+                                
+                                # Check if selection worked
+                                new_url = driver.current_url
+                                page_source = driver.page_source.lower()
+                                
+                                print(f"After click - URL: {new_url}")
+                                print(f"Checking for {os_name} content in page...")
+                                
+                                # Check for .bin files immediately
+                                bin_check = driver.find_elements(By.XPATH, "//a[contains(@href, '.bin') or contains(@href, '.BIN')]")
+                                print(f"Found {len(bin_check)} .bin files after selection")
+                                
+                                if len(bin_check) > 5 or os_data_value.lower() in new_url.lower():
+                                    print(f"Successfully selected {os_name}!")
+                                    return True
+                                else:
+                                    print("Selection didn't seem to work, trying next method...")
+                            else:
+                                print("All click methods failed for this element")
+                            
+                    except Exception as e:
+                        print(f"Error with element: {e}")
+                        continue
+                        
+            except Exception as e:
+                print(f"Error with selector {selector}: {e}")
+                continue
+        
+        print(f"Could not select {os_name}")
+        return False
         
     except Exception as e:
         print(f"Error selecting {os_name}: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 def find_bin_files(driver):
-    """Search for .bin files"""
+    """Enhanced search for .bin files using multiple methods"""
+    print("Searching for .bin/.BIN files using multiple methods...")
+    
     bin_links = []
     
-    # Direct href links
+    # Method 1: Direct href links
     all_links = driver.find_elements(By.TAG_NAME, "a")
     for link in all_links:
         href = link.get_attribute("href")
         if href and (href.lower().endswith(".bin") or href.endswith(".BIN")):
             bin_links.append(href)
     
+    print(f"Method 1 - Direct href links: Found {len(bin_links)} .bin files")
+    
+    # Method 2: Search in page source with regex (only if no direct links found)
+    if len(bin_links) == 0:
+        print("Method 2 - Searching page source with regex...")
+        page_source = driver.page_source
+        
+        # Look for URLs ending in .bin or .BIN
+        bin_urls = re.findall(r'https?://[^\s"\'<>]+\.BIN|https?://[^\s"\'<>]+\.bin', page_source)
+        for url in bin_urls:
+            if url not in bin_links:
+                bin_links.append(url)
+                
+        # Look for relative paths or filenames
+        bin_filenames = re.findall(r'[A-Za-z0-9_.-]+\.BIN|[A-Za-z0-9_.-]+\.bin', page_source)
+        print(f"Found {len(bin_filenames)} .bin filename references in page source:")
+        for filename in bin_filenames[:5]:  # Show first 5
+            print(f"  - {filename}")
+        
+        print(f"Method 2 - Page source regex: Found {len(bin_links)} total .bin files")
+    
     # Remove duplicates
     bin_links = list(set(bin_links))
+    
+    print(f"Final result: Found {len(bin_links)} unique .bin/.BIN files")
+    if bin_links:
+        print("Sample .bin files found:")
+        for i, link in enumerate(bin_links[:5]):  # Show first 5
+            print(f"  {i+1}: {os.path.basename(urlparse(link).path)}")
+    
     return bin_links
 
 def download_file(url, filepath):
@@ -149,7 +333,12 @@ def main():
         'NAA': '해당 없음'
     }
     
-    driver = setup_driver()
+    try:
+        driver = setup_driver()
+    except Exception as e:
+        print(f"Failed to initialize Chrome driver: {e}")
+        return
+        
     all_bin_files = {}  # Dictionary to store OS -> [bin_files]
     download_summary = {}
     
@@ -170,10 +359,17 @@ def main():
                 driver.get(base_url)
                 time.sleep(5)  # Wait for page to load
                 
-                print(f"Current URL: {driver.current_url}")
+                current_url = driver.current_url
+                print(f"Current URL: {current_url}")
+                
+                # Check if we got redirected to login
+                if any(login_indicator in current_url for login_indicator in 
+                       ["login.microsoftonline.com", "login.dell.com", "oauth", "saml"]):
+                    print(f"Got redirected to login page, skipping {os_name}...")
+                    continue
                 
                 # Check if the page loaded successfully
-                if "poweredge-r440" not in driver.current_url:
+                if "poweredge-r440" not in current_url and "dell.com" not in current_url:
                     print(f"Failed to load drivers page, skipping {os_name}...")
                     continue
                 
