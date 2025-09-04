@@ -75,70 +75,244 @@ def find_search_input(driver):
     return None
 
 def select_ubuntu_os(driver):
-    """Force select Ubuntu Server 20.04 LTS using direct data-value click"""
+    """Select Ubuntu Server 20.04 LTS with improved detection"""
     print("Looking for Ubuntu Server 20.04 LTS option...")
     
     try:
         # Wait for page to fully load
-        time.sleep(3)
+        time.sleep(5)
         
         print(f"Current page: {driver.current_url}")
         
-        # First, try to open any dropdown to make options visible
-        try:
-            # Look for dropdown buttons by class
-            dropdown_buttons = driver.find_elements(By.CSS_SELECTOR, "button[aria-haspopup='listbox']")
-            for btn in dropdown_buttons:
-                if btn.is_displayed():
-                    print("Opening dropdown...")
-                    btn.click()
-                    time.sleep(3)
-                    break
-        except:
-            print("Could not open dropdown, trying direct element access...")
-        
-        # Try multiple approaches to find and click Ubuntu option
-        ubuntu_selectors = [
-            "button[data-value='US008']",  # Ubuntu Server 20.04 LTS
-            "button[data-index='9']",      # Based on the log, US008 was at index 9
-            "*[data-value='US008']",       # Any element with this data-value
+        # Method 1: Try to find and open OS dropdown
+        dropdown_selectors = [
+            "button[aria-haspopup='listbox']",
+            "select[name*='os']",
+            "select[id*='os']",
+            ".dropdown-toggle",
+            "[role='combobox']",
+            "button[aria-expanded='false']",
+            "button[data-toggle='dropdown']"
         ]
         
-        for selector in ubuntu_selectors:
+        dropdown_opened = False
+        for selector in dropdown_selectors:
             try:
-                ubuntu_elements = driver.find_elements(By.CSS_SELECTOR, selector)
-                print(f"Found {len(ubuntu_elements)} elements with selector: {selector}")
+                dropdowns = driver.find_elements(By.CSS_SELECTOR, selector)
+                print(f"Found {len(dropdowns)} elements with selector: {selector}")
                 
-                for ubuntu_element in ubuntu_elements:
-                    if ubuntu_element.is_displayed() or ubuntu_element.is_enabled():
-                        print(f"Attempting to click Ubuntu option: {selector}")
+                for dropdown in dropdowns:
+                    if dropdown.is_displayed() and dropdown.is_enabled():
+                        print(f"Clicking dropdown with selector: {selector}")
                         
-                        # Scroll to element
-                        driver.execute_script("arguments[0].scrollIntoView(true);", ubuntu_element)
+                        # Scroll into view
+                        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", dropdown)
                         time.sleep(1)
                         
-                        # Try regular click first
+                        # Try to click
                         try:
-                            ubuntu_element.click()
-                            print("Successfully clicked with regular click")
+                            dropdown.click()
                         except:
-                            # Try JavaScript click
-                            print("Regular click failed, trying JavaScript click...")
-                            driver.execute_script("arguments[0].click();", ubuntu_element)
-                            print("Successfully clicked with JavaScript")
+                            driver.execute_script("arguments[0].click();", dropdown)
                         
-                        time.sleep(7)  # Wait for page reload
+                        time.sleep(3)
+                        dropdown_opened = True
+                        break
                         
-                        # Check if page has changed
-                        new_url = driver.current_url
-                        if "US008" in new_url or "ubuntu" in driver.page_source.lower():
-                            print("Successfully selected Ubuntu Server 20.04 LTS")
-                            return True
+                if dropdown_opened:
+                    break
+                    
+            except Exception as e:
+                print(f"Error with selector {selector}: {e}")
+                continue
+        
+        if not dropdown_opened:
+            print("Could not open any dropdown, trying direct Ubuntu element access...")
+        else:
+            print("Dropdown opened successfully")
+        
+        # Method 2: Try multiple approaches to find and click Ubuntu option
+        ubuntu_selectors = [
+            ("button[data-value='US008']", "Ubuntu Server 20.04 LTS - data-value"),
+            ("*[data-value='US008']", "Ubuntu Server 20.04 LTS - any element"),
+            ("option[value='US008']", "Ubuntu Server 20.04 LTS - option"),
+            ("li[data-value='US008']", "Ubuntu Server 20.04 LTS - list item"),
+            ("[aria-label*='Ubuntu']", "Ubuntu - aria-label"),
+            ("[title*='Ubuntu']", "Ubuntu - title attribute"),
+        ]
+        
+        # Also try text-based searches
+        ubuntu_text_selectors = [
+            "//button[contains(text(), 'Ubuntu')]",
+            "//option[contains(text(), 'Ubuntu')]", 
+            "//li[contains(text(), 'Ubuntu')]",
+            "//a[contains(text(), 'Ubuntu')]",
+            "//*[contains(text(), 'Ubuntu Server 20.04')]",
+            "//*[contains(text(), 'Ubuntu Server 22.04')]",  # Try newer version too
+        ]
+        
+        # Try CSS selectors first
+        ubuntu_found = False
+        for selector, description in ubuntu_selectors:
+            try:
+                ubuntu_elements = driver.find_elements(By.CSS_SELECTOR, selector)
+                print(f"Found {len(ubuntu_elements)} elements for {description}")
+                
+                for ubuntu_element in ubuntu_elements:
+                    try:
+                        # Debug element visibility and state
+                        is_displayed = ubuntu_element.is_displayed()
+                        is_enabled = ubuntu_element.is_enabled()
+                        text = ubuntu_element.text
+                        print(f"Element state - Displayed: {is_displayed}, Enabled: {is_enabled}, Text: '{text[:30]}'")
                         
-                        print("Click didn't seem to change the page, trying next method...")
+                        # Try clicking even if not perfectly visible/enabled
+                        if is_displayed or is_enabled or text:  # More lenient check
+                            print(f"Attempting to click: {description}")
+                            
+                            # Scroll to element
+                            driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", ubuntu_element)
+                            time.sleep(2)
+                            
+                            # Multiple click attempts
+                            click_success = False
+                            
+                            # Method 1: Regular click
+                            try:
+                                ubuntu_element.click()
+                                click_success = True
+                                print("Regular click successful")
+                            except Exception as e:
+                                print(f"Regular click failed: {e}")
+                            
+                            # Method 2: JavaScript click
+                            if not click_success:
+                                try:
+                                    driver.execute_script("arguments[0].click();", ubuntu_element)
+                                    click_success = True
+                                    print("JavaScript click successful")
+                                except Exception as e:
+                                    print(f"JavaScript click failed: {e}")
+                            
+                            # Method 3: Action chains
+                            if not click_success:
+                                try:
+                                    from selenium.webdriver.common.action_chains import ActionChains
+                                    ActionChains(driver).move_to_element(ubuntu_element).click().perform()
+                                    click_success = True
+                                    print("ActionChains click successful")
+                                except Exception as e:
+                                    print(f"ActionChains click failed: {e}")
+                            
+                            # Method 4: Force click with coordinates
+                            if not click_success:
+                                try:
+                                    driver.execute_script("arguments[0].click(); arguments[0].dispatchEvent(new Event('change'));", ubuntu_element)
+                                    click_success = True
+                                    print("Force click with event successful")
+                                except Exception as e:
+                                    print(f"Force click failed: {e}")
+                            
+                            if click_success:
+                                print("Click executed, waiting for page update...")
+                                time.sleep(8)  # Wait longer for page to update
+                                
+                                # Check if selection worked
+                                new_url = driver.current_url
+                                page_source = driver.page_source.lower()
+                                
+                                print(f"After click - URL: {new_url}")
+                                print(f"Checking for Ubuntu content in page...")
+                                
+                                # More comprehensive check
+                                ubuntu_indicators = [
+                                    "ubuntu" in page_source,
+                                    "US008" in new_url,
+                                    "linux" in page_source,
+                                    "lts" in page_source,
+                                    ".bin" in page_source and len(driver.find_elements(By.XPATH, "//a[contains(@href, '.bin') or contains(@href, '.BIN')]")) > 0
+                                ]
+                                
+                                if any(ubuntu_indicators):
+                                    print("Successfully selected Ubuntu!")
+                                    return True
+                                else:
+                                    print("Selection didn't seem to work, checking for bin files anyway...")
+                                    # Try to find .bin files even without Ubuntu confirmation
+                                    bin_check = driver.find_elements(By.XPATH, "//a[contains(@href, '.bin') or contains(@href, '.BIN')]")
+                                    if len(bin_check) > 10:  # If we found many bin files, Ubuntu selection probably worked
+                                        print(f"Found {len(bin_check)} .bin files, Ubuntu selection likely successful!")
+                                        return True
+                                    print("No .bin files found, trying next method...")
+                            else:
+                                print("All click methods failed for this element")
+                            
+                    except Exception as e:
+                        print(f"Error with element: {e}")
+                        continue
                         
             except Exception as e:
-                print(f"Failed with selector {selector}: {e}")
+                print(f"Error with selector {selector}: {e}")
+                continue
+        
+        # Try XPath text-based selectors with enhanced clicking
+        for xpath in ubuntu_text_selectors:
+            try:
+                ubuntu_elements = driver.find_elements(By.XPATH, xpath)
+                print(f"Found {len(ubuntu_elements)} elements with XPath: {xpath}")
+                
+                for ubuntu_element in ubuntu_elements:
+                    try:
+                        # Debug element state
+                        is_displayed = ubuntu_element.is_displayed()
+                        is_enabled = ubuntu_element.is_enabled()
+                        text = ubuntu_element.text
+                        tag_name = ubuntu_element.tag_name
+                        element_id = ubuntu_element.get_attribute('id')
+                        element_class = ubuntu_element.get_attribute('class')
+                        
+                        print(f"XPath element state - Displayed: {is_displayed}, Enabled: {is_enabled}")
+                        print(f"  Text: '{text[:50]}'")
+                        print(f"  Element: {tag_name}, ID: {element_id}, Class: {element_class}")
+                        
+                        # Try clicking even if not perfectly visible/enabled
+                        if is_displayed or is_enabled or text:  # More lenient check
+                            print(f"Attempting to click Ubuntu element with text: '{text[:50]}'...")
+                            
+                            driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", ubuntu_element)
+                            time.sleep(2)
+                            
+                            # Try multiple click methods for text-based elements too
+                            click_methods = [
+                                ("Regular click", lambda: ubuntu_element.click()),
+                                ("JavaScript click", lambda: driver.execute_script("arguments[0].click();", ubuntu_element)),
+                                ("Force click with event", lambda: driver.execute_script("arguments[0].click(); arguments[0].dispatchEvent(new Event('change')); arguments[0].dispatchEvent(new Event('input'));", ubuntu_element))
+                            ]
+                            
+                            for method_name, click_func in click_methods:
+                                try:
+                                    print(f"  Trying {method_name}...")
+                                    click_func()
+                                    time.sleep(8)
+                                    
+                                    # Check for .bin files immediately
+                                    bin_elements = driver.find_elements(By.XPATH, "//a[contains(@href, '.bin') or contains(@href, '.BIN')]")
+                                    print(f"  After {method_name}: Found {len(bin_elements)} .bin files")
+                                    
+                                    if len(bin_elements) > 10:
+                                        print(f"Successfully selected Ubuntu via text search with {method_name}!")
+                                        return True
+                                    
+                                except Exception as e:
+                                    print(f"  {method_name} failed: {e}")
+                                    continue
+                                
+                    except Exception as e:
+                        print(f"Error with element: {e}")
+                        continue
+                        
+            except Exception as e:
+                print(f"Error with XPath {xpath}: {e}")
                 continue
         
         # If direct clicking didn't work, try other Ubuntu versions as fallback
@@ -328,16 +502,7 @@ def main():
             search_input.send_keys(Keys.RETURN)
             time.sleep(5)
             print("Navigating to drivers page...")
-            # Try to load the page with Ubuntu filter directly first
-            ubuntu_url = "https://www.dell.com/support/home/ko-kr/product-support/product/poweredge-r440/drivers?os=US008"
-            print(f"Trying to load Ubuntu filtered page: {ubuntu_url}")
-            driver.get(ubuntu_url)
-            time.sleep(5)
-            
-            # Check if Ubuntu filtering worked
-            if "ubuntu" not in driver.page_source.lower():
-                print("Ubuntu filter didn't work via URL, loading regular page...")
-                driver.get("https://www.dell.com/support/home/ko-kr/product-support/product/poweredge-r440/drivers")
+            driver.get("https://www.dell.com/support/home/ko-kr/product-support/product/poweredge-r440/drivers")
         
         # Wait for drivers page to load
         print("Loading drivers page...")
