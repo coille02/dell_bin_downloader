@@ -1,0 +1,29 @@
+# IDE and editor files
+.vscode/
+.idea/
+
+# Claude Code configuration
+.claude/
+
+# Python virtual environments
+dell_env/
+venv/
+env/
+.env
+
+# Python cache files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Downloaded files
+downloads/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

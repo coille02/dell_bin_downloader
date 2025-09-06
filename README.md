@@ -15,50 +15,104 @@ Dell PowerEdge R440 서버의 모든 운영체제에 대한 .bin 파일들을 �
 ## 요구사항
 
 - Python 3.8 이상
-- Chrome 브라우저
+- Chromium 브라우저
 - 인터넷 연결
 
-## 설치 및 설정
+## Ubuntu/Debian 시스템 설치 및 설정
 
-### 1. 가상환경 생성 및 활성화
+### 1. 시스템 패키지 업데이트
+
+```bash
+sudo apt update
+```
+
+### 2. Chromium 브라우저 및 ChromeDriver 설치
+
+```bash
+sudo apt install chromium-browser chromium-chromedriver -y
+```
+
+### 3-A. Python 패키지 설치 (가상환경 사용)
 
 ```bash
 # 가상환경 생성
-python -m venv .venv
+python3 -m venv dell_env
 
-# 가상환경 활성화 (Windows)
-.venv\Scripts\activate
+# 가상환경 활성화
+source dell_env/bin/activate
 
-# 가상환경 활성화 (Linux/Mac)
-source .venv/bin/activate
+# 패키지 설치
+pip install selenium requests
 ```
 
-### 2. 필요한 패키지 설치
+### 3-B. Python 패키지 설치 (시스템 전역 설치 - Jenkins용)
 
 ```bash
-pip install -r requirements.txt
+# 시스템 전역에 패키지 설치
+sudo apt install python3-pip -y
+pip3 install selenium requests
+
+# 또는 시스템 패키지로 설치
+sudo apt install python3-selenium python3-requests -y
 ```
-
-### 3. Chrome 브라우저 확인
-
-Chrome 브라우저가 설치되어 있는지 확인하세요.
 
 ## 사용법
 
-### 모든 운영체제 드라이버 다운로드
+### 로컬 환경 (가상환경 사용)
 
 ```bash
-python dell_driver_r440_all_os_downloader.py
-```
+# 가상환경 활성화 (매번 실행 전 필요)
+source dell_env/bin/activate
 
-### Ubuntu 22.04 LTS 전용 드라이버 다운로드
-
-```bash
+# 스크립트 실행
 python dell_driver_r440_ubuntu_22.04_downloader.py
 ```
 
-실행하면 다운로드 디렉토리를 입력하라는 메시지가 나타납니다. 
-Enter를 누르면 기본값인 "downloads" 폴더가 사용됩니다.
+### Jenkins 환경 (시스템 전역 설치)
+
+```bash
+# 직접 실행
+python3 dell_driver_r440_ubuntu_22.04_downloader.py
+
+# 모든 운영체제 드라이버 다운로드
+python3 dell_driver_r440_all_os_downloader.py
+```
+
+### Jenkins Pipeline 예제
+
+```groovy
+pipeline {
+    agent any
+    
+    stages {
+        stage('Install Dependencies') {
+            steps {
+                sh '''
+                    sudo apt update
+                    sudo apt install -y chromium-browser chromium-chromedriver python3-pip
+                    pip3 install selenium requests
+                '''
+            }
+        }
+        
+        stage('Download Dell Drivers') {
+            steps {
+                sh '''
+                    python3 dell_driver_r440_ubuntu_22.04_downloader.py
+                '''
+            }
+        }
+        
+        stage('Archive Artifacts') {
+            steps {
+                archiveArtifacts artifacts: 'downloads/**/*.BIN', fingerprint: true
+            }
+        }
+    }
+}
+```
+
+스크립트 실행 시 자동으로 `downloads/Ubuntu_Server_22.04_LTS/` 폴더에 .bin 파일들이 다운로드됩니다.
 
 ## 출력 파일
 
@@ -104,23 +158,29 @@ Enter를 누르면 기본값인 "downloads" 폴더가 사용됩니다.
 ### 가상환경 관련
 ```bash
 # 가상환경이 활성화되지 않는 경우
-# Windows PowerShell에서 실행 정책 변경
-Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+source dell_env/bin/activate
+
+# 가상환경이 없는 경우 다시 생성
+python3 -m venv dell_env
 ```
 
 ### ChromeDriver 오류
-- Chrome 브라우저가 최신 버전인지 확인
+- Chromium 브라우저가 설치되어 있는지 확인
 - 인터넷 연결 상태 확인
 - 가상환경이 활성화되어 있는지 확인
+
+```bash
+# ChromeDriver 재설치
+sudo apt install --reinstall chromium-chromedriver -y
+```
 
 ### 패키지 설치 오류
 ```bash
 # pip 업그레이드
 python -m pip install --upgrade pip
 
-# 캐시 클리어 후 재설치
-pip cache purge
-pip install -r requirements.txt
+# 패키지 재설치
+pip install selenium requests
 ```
 
 ### 페이지 로딩 실패
@@ -136,12 +196,12 @@ pip install -r requirements.txt
 ## 개발 환경 설정
 
 ### IDE 설정 (VS Code)
-1. `.venv` 폴더를 Python 인터프리터로 선택
+1. `dell_env` 폴더를 Python 인터프리터로 선택
 2. 터미널에서 가상환경 활성화 확인
 
 ### 디버깅
-- `page_source.html` 파일을 생성하여 웹페이지 구조 분석
-- 로그 파일을 통해 실행 과정 추적
+- 스크립트 실행 중 오류 발생 시 터미널 출력 확인
+- 네트워크 연결 및 Dell 웹사이트 접근 가능 여부 확인
 
 ## 주의사항
 
